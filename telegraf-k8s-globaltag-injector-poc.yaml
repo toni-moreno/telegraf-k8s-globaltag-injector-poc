@@ -1,0 +1,113 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: list-nodes-sa
+#  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+#  namespace: default
+  name: list-nodes-role
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: list-nodes-rolebinding
+#  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: list-nodes-sa
+  namespace: telegraf
+roleRef:
+  kind: ClusterRole
+  name: list-nodes-role
+  apiGroup: rbac.authorization.k8s.io
+# ---
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: myapp-pod
+#   labels:
+#     app.kubernetes.io/name: MyApp
+# spec:
+#   serviceAccountName: list-nodes-sa
+#   containers:
+#   - name: myapp-container
+#     image: docker.io/library/busybox:1.28
+#     imagePullPolicy: IfNotPresent
+#     command: ['sh', '-c', 'echo The app is running! && env && sleep 360000']
+#   initContainers:
+#   - name: init-helper
+#     image: docker.io/library/test:latest
+#     imagePullPolicy: IfNotPresent
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telegraf-config
+  namespace: telegraf
+data:
+  telegraf.conf: |
+    [global_tags]
+      dc = "us-east-1"
+      arch="${KUBERNETES_IO_ARCH}"
+      os="${KUBERNETES_IO_OS}"
+    [[inputs.mem]]
+    [[outputs.file]]
+      files = ["stdout"]
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: telegraf
+  namespace: telegraf
+spec:
+  selector:
+    matchLabels:
+      app: telegraf
+  template:
+    metadata:
+      labels:
+        app: telegraf
+    spec:
+      serviceAccountName: list-nodes-sa
+      initContainers:
+      - name: init-helper
+        #image name on minukube
+        #image: docker.io/library/k8s-node-label-extractor:latest
+        image: ghcr.io/toni-moreno/k8s-node-label-extractor:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NODENAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: INIT_ENV_FILE
+          value: /shared/init.env
+        volumeMounts:
+        - name: shared
+          mountPath: /shared
+      containers:
+      - name: telegraf
+        image: docker.io/library/telegraf:latest
+        imagePullPolicy: IfNotPresent
+        command: ['/bin/bash', '-c', 'source /shared/init.env && /usr/bin/telegraf'] 
+        volumeMounts:
+        - name: config
+          mountPath: /etc/telegraf/telegraf.conf
+          subPath: telegraf.conf
+        - name: shared
+          mountPath: /shared
+      volumes:
+      - name: config
+        configMap:
+          name: telegraf-config
+      - name: shared
+        emptyDir: {}
