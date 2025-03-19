@@ -28,24 +28,6 @@ roleRef:
   kind: ClusterRole
   name: list-nodes-role
   apiGroup: rbac.authorization.k8s.io
-# ---
-# apiVersion: v1
-# kind: Pod
-# metadata:
-#   name: myapp-pod
-#   labels:
-#     app.kubernetes.io/name: MyApp
-# spec:
-#   serviceAccountName: list-nodes-sa
-#   containers:
-#   - name: myapp-container
-#     image: docker.io/library/busybox:1.28
-#     imagePullPolicy: IfNotPresent
-#     command: ['sh', '-c', 'echo The app is running! && env && sleep 360000']
-#   initContainers:
-#   - name: init-helper
-#     image: docker.io/library/test:latest
-#     imagePullPolicy: IfNotPresent
 ---
 apiVersion: v1
 kind: ConfigMap

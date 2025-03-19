@@ -1,13 +1,11 @@
-# POC
-Esta poc pretende mostrar una posible solución escalable para que con una sola configuración de daemonset de Telegraf de forma dinámica se puedan importar información de labels de nodo tal como lo hace node_exporter
+# POC Añadir globaltags dinamicamente de labels del nodo el que se ejecuta telegraf.
+Esta poc pretende mostrar una posible solución escalable para que con una sola configuración de daemonset de Telegraf de forma dinámica se puedan importar información de labels de nodo tal como lo hace node_exporter.
 
-Para ello se aprovecha una característica de telegraf y es que permite añadir configuraciones en el fichero `/etc/telegraf/telegraf.conf` con variables de entorno.
 
-En este caso nos va a interesar añadirlos como variables globales puesto que son valores para cada nodo.
+##  Necesidad
 
-Por ejemplo:
+Si tenemos extraer info de SO con telegraf de un nodo de EKS que dispone de ciertos labels por ejemplo: 
 
-Si tenemos los siguientes labels en un nodo EKS
 ```yaml
 apiVersion: v1
 kind: Node
@@ -36,7 +34,8 @@ metadata:
     topology.kubernetes.io/zone: eu-west-1a
     workergroup: mygroup
 ```
-Podriamos querer disponer de la siguiente informacion poniendola como variables de entorno , por ejemplo:
+
+Para ello podemos  aprovechar una característica de telegraf y es que permite añadir configuraciones en el fichero `/etc/telegraf/telegraf.conf` con variables de entorno, por ejemplo:
 
 ```toml
 [global_tags]
@@ -54,6 +53,53 @@ Podriamos querer disponer de la siguiente informacion poniendola como variables 
   password = "${INFLUX_PASSWORD}"
 
 ```
+
+##  Problema detectado
+
+Necesitamos añadir en global_tags configuraciones que solo aparecen definidas como labels en el nodo donde se ejecuta.
+
+Aunque es factible setear variables de entorno dinámicas  mediante en uso de `valueFrom`, `fieldRef`, `fieldPath` como se ve en el ejemplo, se observa 
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dapi-envars-fieldref
+spec:
+  containers:
+    - name: my-telegraf
+      image: docker.io/library/telegraf:latest
+      env:
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: MY_POD_SERVICE_ACCOUNT
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.serviceAccountName
+```
+Sin embargo vemos que solo hay opción de setear:
+* [valores definidos en el pod](https://kubernetes.io/docs/tasks/inject-data-application/environment-variable-expose-pod-information/#use-pod-fields-as-values-for-environment-variables)
+* [valores definidos en el contenedor](https://kubernetes.io/docs/tasks/inject-data-application/environment-variable-expose-pod-information/#use-container-fields-as-values-for-environment-variables)
+
+No existe opción de pasarle información referente al **nodo** en el que se ejecuta el pod.
+
+## Solución propuesta.
+
+Puesto que necesitamos extraer información del nodo, de algun modo vamos a tener que consultar esa información y pasarsela como variables de entorno 
 
 Para ello solo tenemos que hacer 2 cosas.
 
